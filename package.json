@@ -1,0 +1,39 @@
+{
+    "name": "chrome-identity-helper",
+    "version": "0.1.0",
+    "description": "Chrome Identity API wrapper — OAuth2 login, token management, user profiles, and Google API integration for MV3 extensions.",
+    "author": "Zovo <hello@zovo.one>",
+    "license": "MIT",
+    "keywords": [
+        "chrome-extension",
+        "identity",
+        "oauth",
+        "oauth2",
+        "google-auth",
+        "login",
+        "manifest-v3",
+        "browser-extension",
+        "token",
+        "authentication"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/theluckystrike/chrome-identity-helper.git"
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "test": "jest",
+        "prepublishOnly": "npm run build"
+    },
+    "devDependencies": {
+        "@types/chrome": "^0.0.260",
+        "typescript": "^5.3.3"
+    }
+}
