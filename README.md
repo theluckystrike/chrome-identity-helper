@@ -129,10 +129,6 @@ npm test
 npm run build
 ```
 
-## Built by Zovo
-
-Part of the [Zovo](https://zovo.one) developer tools family — privacy-first Chrome extensions built by developers, for developers.
-
 ## See Also
 
 ### Related Zovo Repositories
