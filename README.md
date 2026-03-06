@@ -1,94 +1,126 @@
 # chrome-identity-helper
 
-[![npm version](https://img.shields.io/npm/v/chrome-identity-helper)](https://npmjs.com/package/chrome-identity-helper)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
-[![Chrome Web Extension](https://img.shields.io/badge/Chrome-Web%20Extension-orange.svg)](https://developer.chrome.com/docs/extensions/)
-[![CI Status](https://github.com/theluckystrike/chrome-identity-helper/actions/workflows/ci.yml/badge.svg)](https://github.com/theluckystrike/chrome-identity-helper/actions)
-[![Discord](https://img.shields.io/badge/Discord-Zovo-blueviolet.svg?logo=discord)](https://discord.gg/zovo)
-[![Website](https://img.shields.io/badge/Website-zovo.one-blue)](https://zovo.one)
-[![GitHub Stars](https://img.shields.io/github/stars/theluckystrike/chrome-identity-helper?style=social)](https://github.com/theluckystrike/chrome-identity-helper)
+Promise-based wrapper around the Chrome Identity API for Manifest V3 extensions. Handles OAuth2 login, token storage, refresh cycles, authenticated fetch, and user profile retrieval in two small classes.
 
-> Chrome Identity API wrapper for OAuth2 and authentication flows.
+INSTALL
 
-**chrome-identity-helper** simplifies OAuth2 authentication in Chrome extensions with token management, refresh handling, and secure storage. Part of the Zovo Chrome extension utilities.
-
-Part of the [Zovo](https://zovo.one) developer tools family.
-
-## Overview
-
-chrome-identity-helper simplifies OAuth2 authentication in Chrome extensions with token management, refresh handling, and secure storage.
-
-## Features
-
-- ✅ **OAuth2 Support** - Full OAuth2 flow implementation
-- ✅ **Token Management** - Automatic token refresh
-- ✅ **Secure Storage** - Store tokens securely
-- ✅ **Profile Fetching** - Get user profile data
-- ✅ **TypeScript Support** - Full type definitions included
-
-## Installation
-
-```bash
+```
 npm install chrome-identity-helper
 ```
 
-## Usage
+EXPORTS
 
-### Get Auth Token
+The package exports two classes from `src/index.ts`.
 
-```javascript
-import { Identity } from 'chrome-identity-helper';
+`IdentityHelper` is a static utility class that wraps `chrome.identity` methods.
 
-const auth = new Identity({
-  clientId: 'your-client-id.apps.googleusercontent.com',
-  scopes: ['email', 'profile'],
+`TokenManager` is an instance class that persists OAuth tokens in `chrome.storage.local` and handles expiry checks and automatic refresh.
+
+
+IDENTITYHELPER API
+
+All methods on IdentityHelper are static and return promises unless noted.
+
+`IdentityHelper.getToken(interactive?: boolean)` returns a promise that resolves to the OAuth2 access token string. Calls `chrome.identity.getAuthToken` under the hood. Defaults to interactive mode.
+
+`IdentityHelper.removeToken(token: string)` removes a cached auth token so the next `getToken` call fetches a fresh one.
+
+`IdentityHelper.getProfileInfo()` returns user profile info (email and id) via `chrome.identity.getProfileUserInfo`.
+
+`IdentityHelper.launchWebAuth(url: string, interactive?: boolean)` launches a web auth flow for third-party OAuth providers. Returns the redirect URL string containing the authorization code or token.
+
+`IdentityHelper.getRedirectURL(path?: string)` returns the redirect URL synchronously. This is not async. Useful when constructing OAuth URLs that need the extension redirect endpoint.
+
+`IdentityHelper.signOut()` silently fetches the current token, removes it from the cache, and revokes it against Google's OAuth revocation endpoint.
+
+`IdentityHelper.authFetch(url: string, init?: RequestInit)` grabs a token via `getToken()` and performs a `fetch` call with the `Authorization: Bearer` header injected.
+
+
+TOKENMANAGER API
+
+TokenManager is instantiated with an optional storage key (defaults to `__oauth_tokens__`).
+
+```ts
+const tokens = new TokenManager('my_app_tokens');
+```
+
+Token data shape stored and returned by TokenManager:
+
+```ts
+{
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  scopes?: string[];
+}
+```
+
+`save(data)` writes the token data object to `chrome.storage.local`.
+
+`get()` reads stored token data. Returns null if nothing is saved.
+
+`isExpired()` checks whether the current token has passed its `expiresAt` timestamp. Returns false if no expiry is set.
+
+`clear()` removes the stored token data entirely.
+
+`getValid(refreshFn?)` returns the access token string if it has not expired. If the token is expired and a `refreshToken` exists, it calls the provided `refreshFn` to obtain a new access token and persists the result before returning it. Returns null when no token is stored or refresh is not possible.
+
+The refresh function signature:
+
+```ts
+(refreshToken: string) => Promise<{ accessToken: string; expiresAt: number }>
+```
+
+
+USAGE
+
+Getting a token and making an authenticated request:
+
+```ts
+import { IdentityHelper } from 'chrome-identity-helper';
+
+const token = await IdentityHelper.getToken();
+```
+
+Using authFetch to call a Google API:
+
+```ts
+const response = await IdentityHelper.authFetch('https://www.googleapis.com/oauth2/v1/userinfo');
+const user = await response.json();
+```
+
+Storing and refreshing tokens for a third-party provider:
+
+```ts
+import { TokenManager } from 'chrome-identity-helper';
+
+const tokens = new TokenManager();
+
+await tokens.save({
+  accessToken: 'abc',
+  refreshToken: 'xyz',
+  expiresAt: Date.now() + 3600 * 1000,
+  scopes: ['read', 'write'],
 });
 
-const token = await auth.getToken();
-console.log('Access token:', token);
-```
-
-### Get Profile
-
-```javascript
-const profile = await auth.getProfile();
-console.log(profile.email, profile.name, profile.picture);
-```
-
-### With Refresh Token
-
-```javascript
-// Tokens automatically refreshed when expired
-const auth = new Identity({
-  clientId: 'your-client-id',
-  refreshToken: 'stored-refresh-token',
+const valid = await tokens.getValid(async (refreshToken) => {
+  const res = await fetch('https://provider.com/token', {
+    method: 'POST',
+    body: JSON.stringify({ grant_type: 'refresh_token', refresh_token: refreshToken }),
+  });
+  const json = await res.json();
+  return { accessToken: json.access_token, expiresAt: Date.now() + json.expires_in * 1000 };
 });
-
-const token = await auth.getToken(); // Auto-refreshes if needed
 ```
 
-## API
 
-### Options
+MANIFEST PERMISSIONS
 
-| Option | Type | Description |
-|--------|------|-------------|
-| clientId | string | OAuth2 client ID |
-| scopes | string[] | Permission scopes |
-| redirectUri | string | Redirect URI |
-
-### Methods
-
-- `getToken()` - Get access token
-- `getProfile()` - Get user profile
-- `revokeToken()` - Revoke access token
-- `logout()` - Clear all tokens
-
-## Manifest
+Your `manifest.json` needs the identity permission and an OAuth2 section if you are using Google sign-in:
 
 ```json
 {
+  "permissions": ["identity", "storage"],
   "oauth2": {
     "client_id": "your-client-id.apps.googleusercontent.com",
     "scopes": ["email", "profile"]
@@ -96,58 +128,24 @@ const token = await auth.getToken(); // Auto-refreshes if needed
 }
 ```
 
-## Browser Support
 
-- Chrome 90+
+DEVELOPMENT
 
-## Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. **Fork** the repository
-2. **Create** a feature branch: `git checkout -b feature/identity-improvement`
-3. **Make** your changes
-4. **Test** your changes: `npm test`
-5. **Commit** your changes: `git commit -m 'Add new feature'`
-6. **Push** to the branch: `git push origin feature/identity-improvement`
-7. **Submit** a Pull Request
-
-### Development Setup
-
-```bash
-# Clone the repository
+```
 git clone https://github.com/theluckystrike/chrome-identity-helper.git
 cd chrome-identity-helper
-
-# Install dependencies
 npm install
-
-# Run tests
-npm test
-
-# Build
 npm run build
+npm test
 ```
 
-## See Also
+TypeScript compilation targets ES2020 and outputs to `dist/` with declaration files and source maps.
 
-### Related Zovo Repositories
 
-- [zovo-extension-template](https://github.com/theluckystrike/zovo-extension-template) - Boilerplate for building privacy-first Chrome extensions
-- [zovo-types-webext](https://github.com/theluckystrike/zovo-types-webext) - Comprehensive TypeScript type definitions for browser extensions
-- [chrome-data-encrypt](https://github.com/theluckystrike/chrome-data-encrypt) - AES-256 encryption
+LICENSE
 
-### Zovo Chrome Extensions
-
-- [Zovo Tab Manager](https://chrome.google.com/webstore/detail/zovo-tab-manager) - Manage tabs efficiently
-- [Zovo Focus](https://chrome.google.com/webstore/detail/zovo-focus) - Block distractions
-
-Visit [zovo.one](https://zovo.one) for more information.
-
-## License
-
-MIT - [Zovo](https://zovo.one)
+MIT. See LICENSE file.
 
 ---
 
-Built by [Zovo](https://zovo.one)
+Part of the zovo.one Chrome extension studio. Visit https://zovo.one for more tools and extensions.
